@@ -602,6 +602,7 @@ class TextAnchoredLeJEPA(LeJEPA):
         txt_model_name: str  = "microsoft/BiomedVLP-CXR-BERT-specialized",
         proj_dim:      int   = 256,
         num_classes:   int   = 14,
+        warmup_anchor_epochs: int = 0,
         **kwargs
     ):
         """
@@ -612,6 +613,7 @@ class TextAnchoredLeJEPA(LeJEPA):
             txt_model_name (str): The name of the text backbone to use.
             proj_dim (int): The dimension of the projection head.
             num_classes (int): The number of classes for the probe.
+            warmup_anchor_epochs (int): Number of initial epochs to train only the text projector.
             **kwargs: Additional arguments to pass to the parent class.
         """
         super().__init__(
@@ -621,6 +623,7 @@ class TextAnchoredLeJEPA(LeJEPA):
             num_classes=num_classes,
             **kwargs
         )
+        self.save_hyperparameters()
 
     @staticmethod
     def prepare_batch(batch, device) -> dict[str, torch.Tensor]:
@@ -693,6 +696,15 @@ class TextAnchoredLeJEPA(LeJEPA):
         # 1. Encode text (Anchor)
         _, proj_txt = self.backbone.forward_txt(**text_tokens) # [B, D_proj]
         
+        # Idea 4: Text-space warmup (shaping the anchor space before vision alignment)
+        if self.current_epoch < self.hparams.warmup_anchor_epochs:
+            sigreg_txt = self.sigreg_loss(proj_txt, global_step=self.global_step, world_size=self.trainer.world_size)
+            self.log_dict({
+                "train/sigreg": sigreg_txt,
+                "train/loss": sigreg_txt
+            }, prog_bar=True, batch_size=B)
+            return sigreg_txt
+
         # 2. Encode full images
         emb_img, proj_img = self(images) # [N_total, D], [N_total, proj_dim]
 
