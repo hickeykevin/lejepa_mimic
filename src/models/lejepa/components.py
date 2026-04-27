@@ -163,18 +163,21 @@ class MultiModalEncoder(nn.Module):
         """Initializes the multi-modal encoder with specific backbones.
 
         Args:
-            img_model_name: Name of the timm vision model to create.
-            txt_model_name: Name or path of the HuggingFace text model to load.
-            proj_dim: The final dimension of the projected shared latent space.
+            img_model_name (str): Name of the timm vision model to create.
+            txt_model_name (str): Name or path of the HuggingFace text model to load.
+            proj_dim (int): The final dimension of the projected shared latent space.
         """
         super().__init__()
         self.img_backbone = timm.create_model(img_model_name, pretrained=False, num_classes=0, dynamic_img_size=True)
         self.backbone_dim = self.img_backbone.num_features
         self.img_proj = nn.Sequential(
-            nn.Linear(self.backbone_dim, 2048),
-            nn.BatchNorm1d(2048),
+            nn.Linear(self.backbone_dim, 1024),
+            nn.BatchNorm1d(1024),
             nn.GELU(),
-            nn.Linear(2048, 2048),
+            nn.Linear(1024, 1024),
+            nn.BatchNorm1d(1024),
+            nn.GELU(),
+            nn.Linear(1024, 2048),
             nn.BatchNorm1d(2048),
             nn.GELU(),
             nn.Linear(2048, proj_dim)
@@ -202,12 +205,12 @@ class MultiModalEncoder(nn.Module):
             self.txt_backbone = None
             self.txt_proj = None
 
-    def forward(self, x: torch.Tensor, mode: Literal["img", "txt"] = "img"):
+    def forward(self, x: torch.Tensor, mode: Literal["img", "txt"] = "img") -> tuple[torch.Tensor, torch.Tensor]:
         """Dispatches the forward pass based on the input modality.
 
         Args:
-            x: Input data (images for 'img' mode, tokenized text for 'txt' mode).
-            mode: The modality of the input ('img' or 'txt').
+            x (:obj:`torch.Tensor`): Input data (images for 'img' mode, tokenized text for 'txt' mode).
+            mode (str): The modality of the input ('img' or 'txt').
 
         Returns:
             A tuple of (backbone_features, projected_embeddings).
@@ -223,7 +226,7 @@ class MultiModalEncoder(nn.Module):
         """Encodes an image batch and projects it into the shared space.
 
         Args:
-            x: Input image tensor of shape [B, C, H, W].
+            x (:obj:`torch.Tensor`): Input image tensor of shape [B, C, H, W].
 
         Returns:
             A tuple of (vision_features, image_projections).
@@ -235,8 +238,8 @@ class MultiModalEncoder(nn.Module):
         """Encodes tokenized text and projects it into the shared space.
 
         Args:
-            input_ids: Tokenized text IDs.
-            attention_mask: Attention mask for the text sequence.
+            input_ids (:obj:`torch.Tensor`): Tokenized text IDs.
+            attention_mask (:obj:`torch.Tensor`): Attention mask for the text sequence.
             **kwargs: Additional arguments for the text backbone.
 
         Returns:
@@ -285,18 +288,18 @@ class CXRAnatBiasedCrop(nn.Module):
         """Initializes the biased crop transform with specific CXR priors.
 
         Args:
-            output_size: Output resolution.
-            scale: Range of scale for RandomResizedCrop.
-            ratio: Range of aspect ratios.
-            cx_mu: Mean x-coordinate for the crop center.
-            cy_mu: Mean y-coordinate for the crop center.
-            sigma_x: Standard deviation for the x-coordinate.
-            sigma_y: Standard deviation for the y-coordinate.
-            blur_p: Probability of blurring the image.
-            blur_kernel: Size of the Gaussian blur kernel.
-            blur_sigma: Standard deviation of the Gaussian blur.
-            brightness: Brightness jitter strength.
-            contrast: Contrast jitter strength.
+            output_size (int): Output resolution.
+            scale (tuple): Range of scale for RandomResizedCrop.
+            ratio (tuple): Range of aspect ratios.
+            cx_mu (float): Mean x-coordinate for the crop center.
+            cy_mu (float): Mean y-coordinate for the crop center.
+            sigma_x (float): Standard deviation for the x-coordinate.
+            sigma_y (float): Standard deviation for the y-coordinate.
+            blur_p (float): Probability of blurring the image.
+            blur_kernel (int): Size of the Gaussian blur kernel.
+            blur_sigma (float): Standard deviation of the Gaussian blur.
+            brightness (float): Brightness jitter strength.
+            contrast (float): Contrast jitter strength.
         """
         super().__init__()
         self.output_size = output_size
@@ -328,11 +331,11 @@ class CXRAnatBiasedCrop(nn.Module):
         """Samples the crop coordinates using anatomical priors.
 
         Args:
-            w: Width of the input image.
-            h: Height of the input image.
+            w (int): Width of the input image.
+            h (int): Height of the input image.
 
         Returns:
-            A tuple of (top, left, height, width).
+            tuple[int, int, int, int]: A tuple of (top, left, height, width).
         """
         log_ratio = (math.log(self.ratio[0]), math.log(self.ratio[1]))
         for _ in range(10):
@@ -353,10 +356,10 @@ class CXRAnatBiasedCrop(nn.Module):
         """Applies the anatomically-biased crop and augmentations to an image.
 
         Args:
-            img: Input image tensor of shape [C, H, W].
+            img (:obj:`torch.Tensor`): Input image tensor of shape [C, H, W].
 
         Returns:
-            Transformed and normalized image tensor.
+            :obj:`torch.Tensor`: Transformed and normalized image tensor.
         """
         _, h, w = img.shape
         top, left, crop_h, crop_w = self._sample_crop_params(w, h)
@@ -399,14 +402,14 @@ class CXRMultiCropTransform(nn.Module):
         """Initializes the multi-crop transform with view counts and sizes.
 
         Args:
-            global_size: Resolution for global views.
-            local_size: Resolution for local views.
-            scale_global: Scale range for global views.
-            scale_local: Scale range for local views.
-            n_global: Count of global views.
-            n_local: Count of local views.
-            brightness: Brightness jitter strength.
-            contrast: Contrast jitter strength.
+            global_size (int): Resolution for global views.
+            local_size (int): Resolution for local views.
+            scale_global (tuple): Scale range for global views.
+            scale_local (tuple): Scale range for local views.
+            n_global (int): Count of global views.
+            n_local (int): Count of local views.
+            brightness (float): Brightness jitter strength.
+            contrast (float): Contrast jitter strength.
         """
         super().__init__()
         self.n_global = n_global
@@ -426,10 +429,10 @@ class CXRMultiCropTransform(nn.Module):
         """Generates the multi-scale views for a single image.
 
         Args:
-            img: Input image tensor.
+            img (:obj:`torch.Tensor`): Input image tensor.
 
         Returns:
-            A dictionary containing 'global_views' and 'local_views' tensors.
+            dict[str, :obj:`torch.Tensor`]: A dictionary containing 'global_views' and 'local_views' tensors.
         """
         # Precision Island: Force float32 for geometric/color transforms to avoid 
         # bf16 kernel instability. Use modern torch.amp.autocast.
@@ -451,12 +454,12 @@ def _padded_all_gather(local_tensor: torch.Tensor, device: torch.device, world_s
     maximum size before gathering and then trimming them back to original sizes.
 
     Args:
-        local_tensor: The tensor to gather from the current rank.
-        device: The torch device to use.
-        world_size: Total number of distributed processes.
+        local_tensor (:obj:`torch.Tensor`): The tensor to gather from the current rank.
+        device (:obj:`torch.device`): The torch device to use.
+        world_size (int): Total number of distributed processes.
 
     Returns:
-        The concatenated tensor gathered from all ranks.
+        :obj:`torch.Tensor`: The concatenated tensor gathered from all ranks.
     """
     if not dist.is_initialized() or world_size <= 1: return local_tensor
     local_n, D = local_tensor.shape[0], local_tensor.shape[1]
@@ -483,12 +486,12 @@ class GeometryMarginCallback(Callback):
         """Computes and logs the similarity margin for the current batch.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being validated.
-            outputs: Dictionary of outputs from the validation step.
-            batch: The current batch of data.
-            batch_idx: Index of the current batch.
-            dataloader_idx: Index of the dataloader.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being validated.
+            outputs (:obj:`dict[str, torch.Tensor]`): Dictionary of outputs from the validation step.
+            batch (:obj:`tuple`): The current batch of data.
+            batch_idx (int): Index of the current batch.
+            dataloader_idx (int): Index of the dataloader.
         """
         img_emb = outputs["img_emb"].detach()
         txt_emb = outputs["txt_emb"].detach()
@@ -526,12 +529,12 @@ class ClinicalTopologyCallback(Callback):
         """Accumulates embeddings and labels from the current validation batch.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being validated.
-            outputs: Dictionary of outputs from the validation step.
-            batch: The current batch of data.
-            batch_idx: Index of the current batch.
-            dataloader_idx: Index of the dataloader.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being validated.
+            outputs (:obj:`dict[str, torch.Tensor]`): Dictionary of outputs from the validation step.
+            batch (:obj:`tuple`): The current batch of data.
+            batch_idx (int): Index of the current batch.
+            dataloader_idx (int): Index of the dataloader.
         """
         self.img_features.append(outputs["img_emb"].detach())
         self.txt_features.append(outputs["txt_emb"].detach())
@@ -544,8 +547,8 @@ class ClinicalTopologyCallback(Callback):
         metrics (Semantic Recall@K, Jaccard), and evaluates kNN performance.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being validated.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being validated.
         """
         if not self.img_features: return
         all_img = torch.cat(self.img_features, dim=0)
@@ -617,7 +620,7 @@ class LinearProbeCallback(Callback):
         """Initializes or resets the MultilabelAUROC metric.
 
         Args:
-            pl_module: The LightningModule used to determine the device.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule used to determine the device.
         """
         self.auc_metric = MultilabelAUROC(
             num_labels=len(self.target_indices), 
@@ -630,8 +633,8 @@ class LinearProbeCallback(Callback):
         Retrieves the target label indices from the datamodule.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being trained.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being trained.
         """
         self.target_indices = trainer.datamodule.target_indices
         self._init_metric(pl_module)
@@ -639,12 +642,12 @@ class LinearProbeCallback(Callback):
         """Updates the AUC metric with probabilities from the linear probe.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being validated.
-            outputs: Dictionary of outputs from the validation step.
-            batch: The current batch of data.
-            batch_idx: Index of the current batch.
-            dataloader_idx: Index of the dataloader.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being validated.
+            outputs (:obj:`dict[str, torch.Tensor]`): Dictionary of outputs from the validation step.
+            batch (:obj:`tuple`): The current batch of data.
+            batch_idx (int): Index of the current batch.
+            dataloader_idx (int): Index of the dataloader.
         """
         if dataloader_idx != 1 or outputs is None: return
         probs = outputs.get("probs")
@@ -665,8 +668,8 @@ class LinearProbeCallback(Callback):
         """Computes and logs the final AUC for the validation epoch.
 
         Args:
-            trainer: The PyTorch Lightning Trainer.
-            pl_module: The LightningModule being validated.
+            trainer (:obj:`pytorch_lightning.Trainer`): The PyTorch Lightning Trainer.
+            pl_module (:obj:`pytorch_lightning.LightningModule`): The LightningModule being validated.
         """
         if self.auc_metric is None: return
         try:

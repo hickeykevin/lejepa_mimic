@@ -47,6 +47,23 @@ class LeJEPA(L.LightningModule):
         sigreg_target_variance: float  = 1.0,      # EEPP target variance
         **kwargs,
     ):
+        """
+        Initializing the LeJEPA lightning module.
+
+        Args:
+            model_name (str): Name of the vision model to use.
+            txt_model_name (str): Name of the text model to use.
+            proj_dim (int): Dimension of the projection space.
+            num_classes (int): Number of classes for the linear probe.
+            lr (float): Learning rate for the optimizer.
+            weight_decay (float): Weight decay for the optimizer.
+            lamb (float): Weight of the SIGReg loss relative to the JEPA/inv loss.
+            sketch_dim (int): Sketching dimension for the EEPP loss.
+            probe_lr (float): Learning rate for the online probe.
+            probe_wd (float): Weight decay for the online probe.
+            sigreg_target_variance (float): Target variance for the EEPP loss.
+            **kwargs: Additional arguments to pass to the MultiModalEncoder.
+        """
         super().__init__()
         self.save_hyperparameters()
 
@@ -73,10 +90,13 @@ class LeJEPA(L.LightningModule):
             target_variance=1.0,
         )
             
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> tuple:
         """
+        Forward pass through the multi-modal encoder.
+
         Args:
             x: [N, V, C, H, W]  (multi-view) or [N, C, H, W] (single-view val)
+        
         Returns:
             emb:  [N*V, backbone_dim]   raw backbone embeddings
             proj: [V, N, proj_dim]      projected embeddings (view-first)
@@ -126,8 +146,18 @@ class LeJEPA(L.LightningModule):
     #     T = torch.trapz(err, t, dim=1) * N
     #     return T.mean()
 
-    def _compute_probe_loss(self, z, batch, study_map=None):
-        """Compute binary cross-entropy for the online linear probe on detached embeddings."""
+    def _compute_probe_loss(self, z: torch.Tensor, batch: tuple, study_map: torch.Tensor=None) -> torch.Tensor:
+        """
+        Compute binary cross-entropy for the online linear probe on detached embeddings.
+
+        Args:
+            z (torch.Tensor): The embeddings to compute the probe loss on.
+            batch (tuple): The batch of data.
+            study_map (torch.Tensor, optional): Mapping from image to study index.
+
+        Returns:
+            torch.Tensor: The binary cross-entropy loss.
+        """
         if "labels" not in batch or batch["labels"] is None:
             return torch.tensor(0.0, device=self.device, dtype=z.dtype)
             
@@ -145,7 +175,10 @@ class LeJEPA(L.LightningModule):
         return F.binary_cross_entropy_with_logits(logits[valid_mask], y[valid_mask].type_as(logits))
 
     def on_train_start(self):
-        """Final synchronization point to ensure multi-node stability."""
+        """Final synchronization point to ensure multi-node stability.
+        
+        Ensures that all ranks have reached this point before starting training.
+        """
         if self.trainer.world_size > 1:
             print(f"[Rank {self.global_rank}] Reached final sync barrier. Waiting for other nodes...")
             dist.barrier()
@@ -193,7 +226,17 @@ class LeJEPA(L.LightningModule):
         }
 
     # ── Training step ────────────────────────────────────────────────────────
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx: int) -> torch.Tensor | dict[str, torch.Tensor]:
+        """
+        Compute the training loss for a single batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            batch_idx (int): The index of the batch.
+
+        Returns:
+            torch.Tensor: The training loss.
+        """
         # Accept both universal and legacy batch formats
         if "view_mask" in batch:
             batch = self.prepare_batch(batch, self.device)
@@ -239,7 +282,18 @@ class LeJEPA(L.LightningModule):
         return loss
 
     # ── Validation step ──────────────────────────────────────────────────────
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch, batch_idx: int, dataloader_idx: int=0) -> torch.Tensor | dict[str, torch.Tensor]:
+        """
+        Compute the validation loss for a single batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+
+        Returns:
+            dict[str, torch.Tensor]: A dictionary containing the validation loss and other metrics.
+        """
         # Universal format: pick the first valid view per study as the val image
         if "view_mask" in batch:
             images    = batch["images"]      # [B, V_max, C, H, W]
@@ -279,13 +333,25 @@ class LeJEPA(L.LightningModule):
             "labels": batch.get("labels"),
         }
 
-    def configure_callbacks(self):
+    def configure_callbacks(self) -> list[Callback]:
+        """
+        Configure the callbacks for the LightningModule.
+
+        Returns:
+            list[Callback]: A list of callbacks to be used for the LightningModule.
+        """
         return [
             LinearProbeCallback(num_classes=self.hparams.num_classes)
         ]
 
     # ── Optimiser + scheduler ────────────────────────────────────────────────
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> tuple[list[torch.optim.Optimizer], list[dict]]:
+        """
+        Configure the optimiser and scheduler for the LightningModule.
+
+        Returns:
+            tuple[list[torch.optim.Optimizer], list[dict]]: A tuple containing the optimiser and scheduler.
+        """
         # Two parameter groups: backbone + projector (higher WD) vs. probe (near-zero WD)
         g1 = {"params": self.backbone.parameters(),
               "lr": self.hparams.lr, "weight_decay": self.hparams.weight_decay}
@@ -346,6 +412,29 @@ class DINOLeJEPA(LeJEPA):
         contrast:      float = 0.15,
         **kwargs,
     ):
+        """
+        Initializes the DINOLeJEPA model.
+
+        Args:
+            model_name (str): The name of the vision backbone to use.
+            txt_model_name (str): The name of the text backbone to use.
+            proj_dim (int): The dimension of the projection head.
+            num_classes (int): The number of classes for the probe.
+            lr (float): The learning rate for the optimiser.
+            weight_decay (float): The weight decay for the optimiser.
+            lamb (float): The weight for the SIGReg loss.
+            warmup_epochs (int): The number of warmup epochs.
+            sketch_dim (int): The dimension of the sketch.
+            n_global (int): The number of global views.
+            n_local (int): The number of local views.
+            global_size (int): The size of the global views.
+            local_size (int): The size of the local views.
+            scale_global (tuple): The scale of the global views.
+            scale_local (tuple): The scale of the local views.
+            brightness (float): The brightness of the augmentations.
+            contrast (float): The contrast of the augmentations.
+            **kwargs: Additional arguments to pass to the parent class.
+        """
         super().__init__(
             model_name=model_name,
             txt_model_name=txt_model_name,
@@ -381,6 +470,10 @@ class DINOLeJEPA(LeJEPA):
         Study-level labels are replicated per image so _compute_probe_loss
         receives [N_total, num_classes] aligned with the flattened images.
 
+        Args:
+            batch (tuple): The batch of data.
+            device (torch.device): The device to move the data to.
+
         Returns:
             dict with keys:
               'image'  : list[Tensor [C, H, W]] — one entry per image (N_total)
@@ -406,7 +499,17 @@ class DINOLeJEPA(LeJEPA):
             "labels": torch.stack(flat_labels) if flat_labels else None,  # [N_total, num_classes]
         }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx: int) -> dict[str, torch.Tensor]:
+        """
+        Compute the training loss for a single batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            batch_idx (int): The index of the batch.
+
+        Returns:
+            dict[str, torch.Tensor]: The training loss and metrics.
+        """
         if "view_mask" in batch:
             batch = self.prepare_batch(batch, self.device)
         raw_imgs = batch["image"]  # list[Tensor [C, H, W]] — one entry per image
@@ -501,6 +604,16 @@ class TextAnchoredLeJEPA(LeJEPA):
         num_classes:   int   = 14,
         **kwargs
     ):
+        """
+        Initializes the TextAnchoredLeJEPA model.
+
+        Args:
+            model_name (str): The name of the vision backbone to use.
+            txt_model_name (str): The name of the text backbone to use.
+            proj_dim (int): The dimension of the projection head.
+            num_classes (int): The number of classes for the probe.
+            **kwargs: Additional arguments to pass to the parent class.
+        """
         super().__init__(
             model_name=model_name,
             txt_model_name=txt_model_name,
@@ -510,7 +623,7 @@ class TextAnchoredLeJEPA(LeJEPA):
         )
 
     @staticmethod
-    def prepare_batch(batch, device):
+    def prepare_batch(batch, device) -> dict[str, torch.Tensor]:
         """
         Converts a UniversalMimicCxrDataModule batch into the flattened
         (images, study_map, text) format expected by TextAnchoredLeJEPA.
@@ -518,6 +631,10 @@ class TextAnchoredLeJEPA(LeJEPA):
         Variable view counts are handled naturally: each image gets a slot
         in the flat tensor and a corresponding study_map index, so studies
         with 1 image and studies with 5 images coexist in the same batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            device (torch.device): The device to move the data to.
 
         Returns:
             dict with keys:
@@ -554,7 +671,17 @@ class TextAnchoredLeJEPA(LeJEPA):
             "labels":    labels,
         }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx: int) -> dict[str, torch.Tensor]:
+        """
+        Compute the training loss for a single batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            batch_idx (int): The index of the batch.
+
+        Returns:
+            dict[str, torch.Tensor]: The training loss and metrics.
+        """
         # Accept both universal and legacy batch formats
         if "view_mask" in batch:
             batch = self.prepare_batch(batch, self.device)
@@ -597,7 +724,18 @@ class TextAnchoredLeJEPA(LeJEPA):
 
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch, batch_idx: int, dataloader_idx: int=0) -> dict[str, torch.Tensor]:
+        """
+        Compute the validation loss for a single batch.
+
+        Args:
+            batch (tuple): The batch of data.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+
+        Returns:
+            dict[str, torch.Tensor]: The validation loss and metrics.
+        """
         # Accept both universal and legacy batch formats
         if "view_mask" in batch:
             batch = self.prepare_batch(batch, self.device)
