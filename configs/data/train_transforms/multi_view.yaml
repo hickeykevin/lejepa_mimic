@@ -1,0 +1,3 @@
+_target_: src.data.mimic_jpg.transforms.MultiViewTransform
+img_size: 224
+V: 4

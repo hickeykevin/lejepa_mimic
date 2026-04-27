@@ -1,0 +1,9 @@
+_target_: src.data.mimic_jpg.universal_datamodule.UniversalMimicCxrDataModule
+metadata_csv: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/mimic-cxr-2.0.0-metadata.csv
+labels_csv: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/mimic-cxr-2.0.0-chexpert.csv
+reports_root: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/
+images_root: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/
+batch_size: 16
+num_workers: 10
+use_labels: true
+max_length: 512

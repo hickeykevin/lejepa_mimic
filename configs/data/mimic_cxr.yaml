@@ -1,0 +1,12 @@
+defaults:
+  - train_transforms: base
+  - val_transforms: val
+
+_target_: src.data.mimic_jpg.datamodule.MimicCxrDataModule
+metadata_csv: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/mimic-cxr-2.0.0-metadata.csv
+labels_csv: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/mimic-cxr-2.0.0-chexpert.csv
+reports_root: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/
+images_root: ${paths.data_dir}mimic_gcloud/mimic-cxr-jpg-2.1.0.physionet.org/
+batch_size: 32
+num_workers: 4
+use_labels: true
