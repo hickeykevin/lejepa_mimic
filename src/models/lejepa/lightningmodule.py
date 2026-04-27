@@ -602,7 +602,7 @@ class TextAnchoredLeJEPA(LeJEPA):
         txt_model_name: str  = "microsoft/BiomedVLP-CXR-BERT-specialized",
         proj_dim:      int   = 256,
         num_classes:   int   = 14,
-        warmup_anchor_epochs: int = 0,
+        warmup_anchor_epochs: int = 2,
         **kwargs
     ):
         """
