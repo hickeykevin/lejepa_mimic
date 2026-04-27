@@ -1,0 +1,41 @@
+# @package _global_
+
+# Experiment: LeJEPA (pure-ViT, image-only) on MIMIC-CXR
+# Pairs LeJEPA with MimicCxrDataModule.
+# Uses Config Composition for transforms.
+
+defaults:
+  - override /data: mimic_cxr
+  - override /data/transform: multi_view
+  - override /model: lejepa_vit
+  - override /trainer: ddp
+  - override /callbacks: default
+  - override /logger: [csv,wandb]
+
+  - _self_
+
+tags: ["mimic_cxr", "lejepa_vit", "image_only"]
+
+data:
+  batch_size: 64
+  num_workers: 4
+  use_labels: true
+  # We can still override specific sub-params within the chosen transform:
+  transform:
+    V: 8
+
+model:
+  model_name: vit_small_patch16_224
+  proj_dim: 256
+  lr: 2.0e-3
+  lamb: 0.05
+
+trainer:
+  max_epochs: 100
+  precision: 16-mixed
+  check_val_every_n_epoch: 2
+  strategy: ddp
+
+logger:
+  wandb:
+    tags: ${tags}

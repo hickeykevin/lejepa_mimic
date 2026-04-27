@@ -1,0 +1,17 @@
+_target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+cpus_per_task: 10 # Increased to avoid bottleneck on fast H200s
+gpus_per_node: 4
+tasks_per_node: 4
+mem_gb: 32
+nodes: 1
+name: ${task_name}
+partition: "long"
+signal_delay_s: 120
+max_num_timeout: 0
+additional_parameters:
+  constraint: "L40S"
+timeout_min: 1440 # 24 hrs
+array_parallelism: 256
+setup:
+  - "module load cuda/12.8.0/4fdo42o"
