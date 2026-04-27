@@ -602,16 +602,24 @@ class TextAnchoredLeJEPA(LeJEPA):
         txt_model_name: str  = "microsoft/BiomedVLP-CXR-BERT-specialized",
         proj_dim:      int   = 256,
         num_classes:   int   = 14,
+        n_global:      int   = 2,
+        n_local:       int   = 8,
+        global_size:   int   = 224,
+        local_size:    int   = 96,
         **kwargs
     ):
         """
-        Initializes the TextAnchoredLeJEPA model.
+        Initializes the TextAnchoredLeJEPA model with multi-crop support.
 
         Args:
             model_name (str): The name of the vision backbone to use.
             txt_model_name (str): The name of the text backbone to use.
             proj_dim (int): The dimension of the projection head.
             num_classes (int): The number of classes for the probe.
+            n_global (int): Number of global image views.
+            n_local (int): Number of local image views.
+            global_size (int): Resolution for global views.
+            local_size (int): Resolution for local views.
             **kwargs: Additional arguments to pass to the parent class.
         """
         super().__init__(
@@ -620,6 +628,11 @@ class TextAnchoredLeJEPA(LeJEPA):
             proj_dim=proj_dim,
             num_classes=num_classes,
             **kwargs
+        )
+        self.save_hyperparameters()
+        self.multicrop = CXRMultiCropTransform(
+            global_size=global_size, local_size=local_size,
+            n_global=n_global, n_local=n_local,
         )
 
     @staticmethod
@@ -693,13 +706,23 @@ class TextAnchoredLeJEPA(LeJEPA):
         # 1. Encode text (Anchor)
         _, proj_txt = self.backbone.forward_txt(**text_tokens) # [B, D_proj]
         
-        # 2. Encode full images
-        emb_img, proj_img = self(images) # [N_total, D], [N_total, proj_dim]
+        # 2. Encode images with Multi-Crop (Idea 1)
+        # Apply multicrop to each image independently
+        all_crops = []
+        for i in range(images.shape[0]):
+            crops = self.multicrop(images[i])
+            # Concatenate global and local views: [V, C, H, W]
+            combined = torch.cat([crops["global_views"], crops["local_views"]], dim=0)
+            all_crops.append(combined)
+        
+        all_crops = torch.stack(all_crops) # [N_total, V, C, H, W]
+        emb_img, proj_img = self(all_crops) # emb: [N*V, D], proj: [V, N, proj_dim]
 
         # 3. Asymmetric invariance loss
-        # Each image is pulled toward its study's text anchor
+        # Each view of each image is pulled toward its study's text anchor
         mapped_proj_txt = proj_txt[study_map] # [N_total, d]
-        inv_loss = (mapped_proj_txt - proj_img).pow(2).mean()
+        # proj_img is [V, N, d]. Broadcast text anchor across views.
+        inv_loss = (mapped_proj_txt.unsqueeze(0) - proj_img).pow(2).mean()
 
         # 4. SIGReg per-modality independently
         sig_txt = self.sigreg_loss(proj_txt, global_step=self.global_step, world_size=self.trainer.world_size)
