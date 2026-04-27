@@ -1,0 +1,21 @@
+_target_: src.models.lejepa.lightningmodule.DINOLeJEPA
+
+model_name: vit_small_patch16_224  # timm model name; swap to vit_base_patch16_224 for B
+proj_dim: 256                       # increased per previous performance analysis
+num_classes: 14                     # CheXpert label count for the online probe
+lr: 2.0e-3                          # backbone + projector learning rate
+weight_decay: 5.0e-2                # AdamW WD for backbone/projector group
+probe_lr: 8.0e-3                    # separate LR for the online probe (faster for tracking evolving feats)
+probe_wd: 1.0e-7                    # near-zero weight decay for the probe
+lamb: 0.05                          # SIGReg weight (λ); paper recommends 0.02–0.05
+sigreg_target_variance: 1.5         # expansion pressure; higher forces more variance
+warmup_epochs: 5                    # Recommended 5 epochs for stabilization
+sketch_dim: 256                     # number of random projections in SIGReg
+
+# DINO-specific crop geometry
+n_global: 2
+n_local: 8
+global_size: 224
+local_size: 96
+scale_global: [0.40, 1.00]
+scale_local: [0.05, 0.40]

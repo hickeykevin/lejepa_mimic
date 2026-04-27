@@ -1,0 +1,14 @@
+_target_: src.models.lejepa.lightningmodule.TextAnchoredLeJEPA
+
+model_name: vit_small_patch16_224
+txt_model_name: microsoft/BiomedVLP-CXR-BERT-specialized
+proj_dim: 256
+num_classes: 14
+lr: 1.0e-4
+weight_decay: 5.0e-2
+probe_lr: 1.0e-3
+probe_wd: 1e-7
+lamb: 0.05
+warmup_epochs: 5
+sigreg_target_variance: 1.0
+sketch_dim: 256

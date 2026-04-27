@@ -1,0 +1,7 @@
+_target_: src.models.lejepa.lightningmodule.MIMICLeJEPA
+proj_dim: 128
+lr: 1e-4
+lamb: 0.02 # Weight for SIGReg (Global Push)
+# Backbone configuration (standard in the class implementation)
+# Image: ViT-Small
+# Text: BiomedVLP-CXR-BERT-specialized
