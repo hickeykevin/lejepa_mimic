@@ -602,6 +602,7 @@ class TextAnchoredLeJEPA(LeJEPA):
         txt_model_name: str  = "microsoft/BiomedVLP-CXR-BERT-specialized",
         proj_dim:      int   = 256,
         num_classes:   int   = 14,
+        detach_anchor: bool  = True,
         **kwargs
     ):
         """
@@ -612,6 +613,7 @@ class TextAnchoredLeJEPA(LeJEPA):
             txt_model_name (str): The name of the text backbone to use.
             proj_dim (int): The dimension of the projection head.
             num_classes (int): The number of classes for the probe.
+            detach_anchor (bool): Whether to detach the text anchor in the invariance loss.
             **kwargs: Additional arguments to pass to the parent class.
         """
         super().__init__(
@@ -621,6 +623,7 @@ class TextAnchoredLeJEPA(LeJEPA):
             num_classes=num_classes,
             **kwargs
         )
+        self.save_hyperparameters()
 
     @staticmethod
     def prepare_batch(batch, device) -> dict[str, torch.Tensor]:
@@ -699,6 +702,11 @@ class TextAnchoredLeJEPA(LeJEPA):
         # 3. Asymmetric invariance loss
         # Each image is pulled toward its study's text anchor
         mapped_proj_txt = proj_txt[study_map] # [N_total, d]
+        
+        # Idea 2: Explicitly detach anchor to prevent vision noise from corrupting text space
+        if self.hparams.detach_anchor:
+            mapped_proj_txt = mapped_proj_txt.detach()
+            
         inv_loss = (mapped_proj_txt - proj_img).pow(2).mean()
 
         # 4. SIGReg per-modality independently
