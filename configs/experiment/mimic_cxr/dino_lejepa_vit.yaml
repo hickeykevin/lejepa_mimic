@@ -1,0 +1,39 @@
+# @package _global_
+
+# Experiment: DINOLeJEPA (Multi-crop with Asymmetric Teachers) on MIMIC-CXR
+# The DataModule passes high-res source images via RawSourceTransform.
+# All multi-crop logic (2 Global + 8 Local views) is done by the model on the GPU.
+
+defaults:
+  - override /data: mimic_cxr
+  - override /data/train_transforms: raw   # RawSourceTransform: 512px source, no augment
+  - override /model: dino_lejepa_vit
+  - override /trainer: ddp
+  - override /callbacks: default
+  - override /logger: [csv,wandb]
+
+  - _self_
+
+tags: ["mimic_cxr", "dino_lejepa_vit", "multi_crop", "asymmetric"]
+
+data:
+  batch_size: 32
+  num_workers: 10
+  use_labels: true
+
+model:
+  model_name: vit_small_patch16_224
+  proj_dim: 256
+  lr: 1.0e-4
+  lamb: 0.05
+  warmup_epochs: 20
+
+trainer:
+  max_epochs: 100
+  precision: bf16-mixed
+  check_val_every_n_epoch: 2
+  strategy: ddp
+
+logger:
+  wandb:
+    tags: ${tags}

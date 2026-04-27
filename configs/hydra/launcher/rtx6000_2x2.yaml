@@ -1,0 +1,19 @@
+_target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+# Resource settings
+nodes: 2
+gpus_per_node: 2
+tasks_per_node: 2
+cpus_per_task: 10      # Efficient for data loading on these nodes
+mem_gb: 32           # Adjust based on node capacity
+# SLURM Cluster settings
+partition: "short"
+name: ${task_name}
+timeout_min: 1440      # 24 hours
+signal_delay_s: 120
+max_num_timeout: 0
+additional_parameters:
+  constraint: "RTX6000B"
+array_parallelism: 256
+setup:
+  - "module load cuda/12.8.0/4fdo42o"
