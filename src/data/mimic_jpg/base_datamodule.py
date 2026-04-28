@@ -17,6 +17,7 @@ class BaseMimicDataModule(pl.LightningDataModule, ABC):
         metadata_csv: str,
         use_labels: bool = False,
         labels_csv: Optional[str] = None,
+        **kwargs
     ):
         super().__init__()
         self.metadata_csv = metadata_csv

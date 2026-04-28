@@ -68,11 +68,13 @@ class StudyMimicCxrDataModule(BaseMimicDataModule):
         use_labels: bool = False,
         labels_csv: Optional[str] = None,
         max_length: int = 512,
+        **kwargs,
     ):
         super().__init__(
             metadata_csv=metadata_csv,
             use_labels=use_labels,
-            labels_csv=labels_csv
+            labels_csv=labels_csv,
+            **kwargs
         )
         self.reports_root = str(reports_root)
         self.images_root = str(images_root)
