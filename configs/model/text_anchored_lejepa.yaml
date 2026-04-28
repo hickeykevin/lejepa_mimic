@@ -12,3 +12,4 @@ lamb: 0.05
 warmup_epochs: 5
 sigreg_target_variance: 1.0
 sketch_dim: 256
+warmup_anchor_epochs: 2

@@ -608,6 +608,7 @@ class TextAnchoredLeJEPA(LeJEPA):
         n_local:       int   = 8,
         global_size:   int   = 224,
         local_size:    int   = 96,
+        warmup_anchor_epochs: int = 2,
         **kwargs
     ):
         """
@@ -623,6 +624,7 @@ class TextAnchoredLeJEPA(LeJEPA):
             n_local (int): Number of local image views.
             global_size (int): Resolution for global views.
             local_size (int): Resolution for local views.
+            warmup_anchor_epochs (int): Number of initial epochs to train only the text projector.
             **kwargs: Additional arguments to pass to the parent class.
         """
         super().__init__(
@@ -709,6 +711,15 @@ class TextAnchoredLeJEPA(LeJEPA):
         # 1. Encode text (Anchor)
         _, proj_txt = self.backbone.forward_txt(**text_tokens) # [B, D_proj]
         
+        # Idea 4: Text-space warmup (shaping the anchor space before vision alignment)
+        if self.current_epoch < self.hparams.warmup_anchor_epochs:
+            sigreg_txt = self.sigreg_loss(proj_txt, global_step=self.global_step, world_size=self.trainer.world_size)
+            self.log_dict({
+                "train/warmup_sigreg": sigreg_txt,
+                "train/warmup_loss": sigreg_txt
+            }, prog_bar=True, batch_size=B, on_step=True, on_epoch=True)
+            return sigreg_txt
+
         # 2. Encode images with Multi-Crop (Idea 1)
         # Apply multicrop to each image independently
         g_list, l_list = [], []
