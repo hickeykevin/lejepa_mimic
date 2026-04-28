@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import lightning as L
 import torch.distributed as dist
 import timm
+from lightning.pytorch.callbacks import Callback
 # from loss import EppsPulley
 
 from .components import (
@@ -708,15 +709,21 @@ class TextAnchoredLeJEPA(LeJEPA):
         
         # 2. Encode images with Multi-Crop (Idea 1)
         # Apply multicrop to each image independently
-        all_crops = []
+        g_list, l_list = [], []
         for i in range(images.shape[0]):
             crops = self.multicrop(images[i])
-            # Concatenate global and local views: [V, C, H, W]
-            combined = torch.cat([crops["global_views"], crops["local_views"]], dim=0)
-            all_crops.append(combined)
-        
-        all_crops = torch.stack(all_crops) # [N_total, V, C, H, W]
-        emb_img, proj_img = self(all_crops) # emb: [N*V, D], proj: [V, N, proj_dim]
+            g_list.append(crops["global_views"])   # [ng, 3, gs, gs]
+            l_list.append(crops["local_views"])    # [nl, 3, ls, ls]
+
+        global_views = torch.stack(g_list)   # [N_total, ng, 3, gs, gs]
+        local_views  = torch.stack(l_list)    # [N_total, nl, 3, ls, ls]
+
+        # Encode global and local views separately to avoid spatial dimension mismatch
+        emb_g, proj_g = self(global_views)   # emb_g: [N_total*ng, D], proj_g: [ng, N_total, proj_dim]
+        _, proj_l = self(local_views)        # proj_l: [nl, N_total, proj_dim]
+
+        # Combine projections for the invariance loss
+        proj_img = torch.cat([proj_g, proj_l], dim=0) # [ng+nl, N_total, proj_dim]
 
         # 3. Asymmetric invariance loss
         # Each view of each image is pulled toward its study's text anchor
@@ -732,8 +739,9 @@ class TextAnchoredLeJEPA(LeJEPA):
         # 5. Combined loss
         lejepa_loss = (1 - self.hparams.lamb) * inv_loss + self.hparams.lamb * sigreg_loss
 
-        # 6. Online probe (detached image-level embeddings)
-        probe_loss = self._compute_probe_loss(emb_img.detach(), batch, study_map=study_map)
+        # 6. Online probe (detached global image-level embeddings)
+        expanded_study_map = study_map.repeat_interleave(self.hparams.n_global)
+        probe_loss = self._compute_probe_loss(emb_g.detach(), batch, study_map=expanded_study_map)
 
         loss = lejepa_loss + probe_loss
 
