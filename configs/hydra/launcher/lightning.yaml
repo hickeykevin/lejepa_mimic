@@ -1,11 +1,11 @@
-# @package hydra.launcher
+# configs/hydra/launcher/lightning.yaml
 _target_: src.utils.lightning_launcher.LightningLauncher
 
-# Lightning AI Details
-studio_name: "lejepa-mimic" # Replace with your actual Studio name
-teamspace: "my-teamspace"   # Replace with your actual Teamspace
-user: "khickey"             # Your username
+# Pull from environment variables
+studio_name: ${oc.env:LIGHTNING_STUDIO_NAME}
+teamspace: ${oc.env:LIGHTNING_TEAMSPACE}
+user: ${oc.env:LIGHTNING_USER}
 
 # Resource settings
-machine: "A10G"             # Options: CPU, T4, A10G, L4, A100, etc.
-setup_command: "uv pip install -e . && uv pip install lightning-sdk" # Ensure env is ready
+machine: "A10G"
+setup_command: "uv pip install -e . && uv pip install lightning-sdk"
