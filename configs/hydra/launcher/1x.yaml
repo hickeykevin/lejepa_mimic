@@ -1,17 +1,15 @@
 _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
 submitit_folder: ${hydra.sweep.dir}/.submitit/%j
-timeout_min: 1000
-cpus_per_task: 14
-gpus_per_node: 2
-tasks_per_node: 2
+cpus_per_task: 10 # Increased to avoid bottleneck on fast H200s
+gpus_per_node: 1
+tasks_per_node: 1
 mem_gb: 32
 nodes: 1
 name: ${task_name}
 partition: "short"
-
 signal_delay_s: 120
 max_num_timeout: 0
 additional_parameters:
-  constraint: "A100"
+  constraint: "H200"
+timeout_min: 420 # 7 hrs
 array_parallelism: 256
-setup: []

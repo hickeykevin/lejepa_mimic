@@ -5,9 +5,9 @@
 # Uses study-level grouping via StudyMimicCxrDataModule.
 
 defaults:
-  - override /data: mimic_cxr_universal
+  - override /data: mimic_cxr_study
   - override /model: text_anchored_lejepa
-  - override /trainer: gpu
+  - override /trainer: ddp
   - override /callbacks: default
   - override /logger: [csv,wandb]
 
@@ -18,7 +18,7 @@ tags: ["mimic_cxr", "text_anchored_lejepa", "multimodal", "study_level"]
 data:
   # Study-level batch size; 16 studies can mean 32+ images
   batch_size: 64
-  num_workers: 10
+  num_workers: 8
   use_labels: true
   max_length: 512
 
@@ -28,12 +28,13 @@ model:
   lr: 1.0e-4
   lamb: 0.05
   warmup_epochs: 10
+  warmup_anchor_epochs: 2
 
 trainer:
   max_epochs: 100
   precision: bf16-mixed
   check_val_every_n_epoch: 2
-  accumulate_grad_batches: 2
+  strategy: ddp_find_unused_parameters_true
 
 logger:
   wandb:
